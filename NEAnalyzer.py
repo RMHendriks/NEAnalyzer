@@ -1,6 +1,7 @@
 import pandas as pd
 import matplotlib.pyplot as plt
-from seaborn import displot
+from seaborn import displot, barplot
+from typing import Union
 
 
 class NEA():
@@ -13,42 +14,67 @@ class NEA():
     TODO Find a design that makes it possible to insert multiple strings for comparisons
     """
 
-    def __init__(self, input_string: str, text_fabric: object, F: object, T: object) -> None:
+    def __init__(self, input_list: Union[list[str], list[int]],
+                 A: object, F: object, T: object, L: object) -> None:
         """
-        Needs an input as a string. Will be checked if it is a valid named entity.
+        Needs an input as a list with strings or intergers (nodes). Will be checked if it is a valid named entity.
         TODO add entityKind optional parameter and check
         """
 
-        self.text_fabric = text_fabric
-        self.named_entity = input_string
-        self.named_entity_tuple = self.get_named_entity(input_string)
+        self.A = A
+        self.named_entity = input_list
+        self.named_entity_list = self.get_named_entity(input_list)
 
-        if not self.named_entity_tuple:
-            print("Entity does not exist in this corpus")
+        if not self.named_entity_list:
+            print("Entity list is empty")
         else:
             print("Succes!")
 
         # TODO tmp solution
         self.F = F
         self.T = T
+        self.L = L
 
         self.pd_data_frame = self.build_data_frame()
     
-    def get_named_entity(self, input_string) -> list[tuple[int]]:
+    def get_named_entity(self, input_list) -> list[list[tuple[int]]]:
         """
         Gets the named entity from a query search of the corpus.
         
         Returns a list of tuples with nodes as Int.
         """
 
-        query = f"""
-letter
-    word trans~{input_string} entityId entityKind*
-        """
+        node_list: list[list[tuple[int]]] = []
 
-        return self.text_fabric.search(query)
+        # convert a str list
+        if input_list and all(isinstance(s, str) for s in input_list):
+
+            for s in input_list:
+                query = f"""
+letter
+    word trans~{s} entityId entityKind*
+        """
+                result = self.A.search(query)
+                if not result:
+                    print(f"\"{s}\" does not exist as a named entity")
+                else:
+                    node_list.append(result)
+
+        # convert an int (node) list
+        # TODO node inputs need more checks if valid
+        elif input_list and all(isinstance(i, int) for i in input_list):
+            for i in node_list:
+                if self.F.entityId.v(i) is not None:
+                    letter = self.L.u(i, otype="letter")
+                    self.node_list.append([i, letter])
+        
+        else:
+            print("Input list is not valid")
+        
+        
+        return node_list
     
-    def build_data_frame(self) -> pd.DataFrame:
+    def build_data_frame(self) -> list[pd.DataFrame]:
         """
         Fills a panda's dataframe with information
         - Node as an Int
@@ -60,23 +86,33 @@ letter
 
         Returns a Panda's Dataframe with these as columns and the nodes as rows.
         TODO specify this more and expand the data being extracted
+        TODO add entityKind 
         """
-        named_entity_dict = {"Node": [],
-                             "Name": [],
-                             "Year": [],
-                             "Month": [],
-                             "Day": [],
-                             "Letter": []}
+        data_frame_list: list[pd.DataFrame] = []
 
-        for letter, node in self.named_entity_tuple:
-            named_entity_dict["Node"].append(node)
-            named_entity_dict["Name"].append(self.T.text(node))
-            named_entity_dict["Year"].append(self.F.year.v(letter))
-            named_entity_dict["Month"].append(self.F.month.v(letter))
-            named_entity_dict["Day"].append(self.F.day.v(letter))
-            named_entity_dict["Letter"].append(self.F.title.v(letter))
+        for named_entity in self.named_entity_list:
+            named_entity_dict = {"Node": [],
+                                "Name": [],
+                                "Year": [],
+                                "Month": [],
+                                "Day": [],
+                                "EntityKind": [],
+                                "EntityId":  [],
+                                "Letter": []}
 
-        return pd.DataFrame(named_entity_dict)
+            for letter, node in named_entity:
+                named_entity_dict["Node"].append(node)
+                named_entity_dict["Name"].append(self.T.text(node))
+                named_entity_dict["Year"].append(self.F.year.v(letter))
+                named_entity_dict["Month"].append(self.F.month.v(letter))
+                named_entity_dict["Day"].append(self.F.day.v(letter))
+                named_entity_dict["EntityKind"].append(self.F.entityKind.v(node))
+                named_entity_dict["EntityId"].append(self.F.entityId.v(node))
+                named_entity_dict["Letter"].append(self.F.title.v(letter))
+
+            data_frame_list.append(pd.DataFrame(named_entity_dict))
+
+        return data_frame_list
 
     def draw_plot(self, use_fixed_x=False) -> None:
         """
@@ -86,16 +122,31 @@ letter
 
         FIXED_X_AXIS = (1610, 1767)
 
+        data: list[pd.DataFrame] = []
+
+        for data_frame in self.pd_data_frame:
+            year_list = data_frame["Year"]
+            year_list.name = data_frame["Name"][0]
+            data.append(year_list)
+
         if use_fixed_x:
-            displot(data=self.pd_data_frame["Year"])
+            displot(data=data, multiple='stack')
             plt.xlim(FIXED_X_AXIS)
         else:
-            displot(data=self.pd_data_frame["Year"])
+            displot(data=data, x="Year", multiple='stack')
 
         plt.show()
 
+    def detect_overlap(self) -> None:
+        """
+        TODO Detect if NE overlap in the same letter
+        """
+
+        pass
+
     def print_info(self) -> None:
-        """ Prints the data in the Jupyter Notebook.
+        """
+        Prints the data in the Jupyter Notebook.
         TODO Greatly expand the data shown and functionality (Ask supervisor for advice)
         """
 
