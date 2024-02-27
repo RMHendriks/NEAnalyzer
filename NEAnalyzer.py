@@ -1,7 +1,8 @@
 import pandas as pd
 import matplotlib.pyplot as plt
-from seaborn import displot, barplot
+from seaborn import displot
 from numpy import transpose
+from Levenshtein import ratio
 from copy import deepcopy
 from collections import Counter
 from typing import Union
@@ -31,8 +32,9 @@ class NEA():
         self.T = T
         self.L = L
 
-        self.named_entity = input_list
         self.named_entity_list = self.get_named_entity(input_list)
+        self.named_entity_str_list = [T.text(named_entity) if isinstance(named_entity, int) else
+                                      named_entity for named_entity in input_list]
 
         if not self.named_entity_list:
             print("Entity list is empty")
@@ -87,6 +89,27 @@ letter
         
         return node_list
     
+    def edit_distance_search(self, edit_distance_ratio=0.8, named_entity=True) -> list[list[tuple[int, int]]]:
+        """
+        Use the edit distance to find similar strings.
+        - Optional factor [0-1] as a float to override the edit_distance_ratio
+
+        Returns a list of lists of tuples with an letter node as an int and a word node as an int.
+        """
+        
+        output_list = []
+
+        for named_entity_str in self.named_entity_str_list:
+            letter_node_list = []
+            for word in self.F.otype.s("word"):
+                if ratio(named_entity_str, self.T.text(word)) >= edit_distance_ratio:
+                    if named_entity is False or self.F.entityId.v(word) is not None:
+                        letter_node_list.append((self.L.u(word, otype="letter")[0], word))
+            output_list.append(letter_node_list)
+            print(f"{named_entity_str} done in X seconds -- {len(letter_node_list)} matches.")
+        
+        return output_list
+
     def build_data_frame(self) -> list[pd.DataFrame]:
         """
         Fills a panda's dataframe with information
@@ -233,7 +256,7 @@ letter
         for lst in letter_list[1:]:
             intersecting_elements.intersection_update(lst)
 
-        print(f"Overlap of the {len(self.named_entity)} named entities in {len(intersecting_elements)} letters.\n")
+        print(f"Overlap of the {len(self.named_entity_str_list)} named entities in {len(intersecting_elements)} letters.\n")
 
         if print_letters:
             for letter in intersecting_elements:
